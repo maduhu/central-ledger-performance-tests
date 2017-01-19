@@ -1,0 +1,10 @@
+boto
+boto3
+troposphere
+awacs
+
+#testing requirements
+pytest
+mock
+-e git+https://github.com/vesln/robber.py.git#egg=robber
+moto
