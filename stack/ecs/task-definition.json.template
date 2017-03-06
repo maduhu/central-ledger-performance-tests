@@ -1,0 +1,47 @@
+{
+  "volumes": [
+    {
+      "name": "perfdata",
+      "host": {
+        "sourcePath": "<ECS_VOLUME_HOST_PATH>"
+      }
+    }
+  ],
+  "containerDefinitions": [
+    {
+      "name": "central-ledger-performance-tests",
+      "image": "<DOCKER_IMAGE>",
+      "essential": true,
+      "memoryReservation": 200,
+      "environment": [
+          {
+            "name": "CLEDG_HOSTNAME",
+            "value": "<HOSTNAME>"
+          },
+          {
+            "name": "ECS_CONTAINER_PATH",
+            "value": "<ECS_CONTAINER_PATH>"
+          }
+        ],
+      "mountPoints": [
+        {
+          "sourceVolume": "perfdata",
+          "containerPath": "<ECS_CONTAINER_PATH>"
+        }
+      ],
+      "ulimits": [
+        {
+          "softLimit": 65536,
+          "hardLimit": 65536,
+          "name": "nofile"
+        },
+        {
+          "softLimit": 65536,
+          "hardLimit": 65536,
+          "name": "nproc"
+        }
+      ]
+    }
+  ],
+  "family": "central-ledger-performance-tests-family"
+}

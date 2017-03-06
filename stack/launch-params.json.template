@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "DatabaseName",
+    "ParameterValue": "central_ledger"
+  },
+  {
+    "ParameterKey": "DatabasePassword",
+    "ParameterValue": "cVq8iFqaLuHy8jjKuA"
+  },
+  {
+    "ParameterKey": "DatabaseUser",
+    "ParameterValue": "central_ledger"
+  },
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "<EC2_KEY_PAIR_NAME>"
+  }
+]
