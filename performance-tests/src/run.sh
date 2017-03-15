@@ -4,18 +4,21 @@ set -euo pipefail
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-RUN="${ECS_CONTAINER_PATH}/run"
-TARGETS="${RUN}/targets.txt"
+NOW=$(date +"%Y_%m_%d_%H_%M_%S")
+RUN="$ECS_CONTAINER_PATH/run"
+TARGETS="$RUN/targets.txt"
+APPLOG="$RUN/shellLog.log"
 
-
-RATE=10
-DURATION=10
 NUMBER_OF_WORKERS=1
+
+log(){
+	local timestamp=$(date +"%Y_%m_%d_%H_%M_%S.%N")
+	echo "[$timestamp] $1" >> $APPLOG
+}
 
 prepare() {
 	rm -rf "$RUN"
 	mkdir -p "$RUN"
-	echo "rate: $RATE duration: $DURATION workers: $NUMBER_OF_WORKERS" >> "$RUN/shellLog.log"
 }
 
 log_ulimits(){
@@ -28,36 +31,56 @@ log_ulimits(){
 	} > "${RUN}/log"
 }
 
+run_setup_requests() {
+	local test_name=$1
+	log "Run $test_name-setup.js $test_name $CLEDG_HOSTNAME"
+	if [[ -x "perf-test-scripts/$test_name/$test_name-setup.js" ]];
+	then
+		node "perf-test-scripts/$test_name/$test_name-setup.js" $test_name $CLEDG_HOSTNAME
+	fi
+}
+
 generate_targets(){
-	local number_of_requests
-	local bodies
-	number_of_requests=$((RATE*DURATION))
-	bodies="${RUN}/bodies"
+	local test_name=$1
+	local rate=$2
+	local duration=$3
+	log "Run $test_name-exec.js $test_name $rate $duration $CLEDG_HOSTNAME"
+	node "perf-test-scripts/$test_name/$test_name-exec.js" $test_name $rate $duration $CLEDG_HOSTNAME $RUN
+	log "Targets Generated"
+}
 
-	mkdir -p "$bodies"
-
-	for (( i=1; i<=number_of_requests; i++ ))
-	do
-		transfer_id=$(uuidgen)
-		sed \
-			-e "s|<LEDGER_URL>|$CLEDG_HOSTNAME|g" \
-			-e "s|<TRANSFER_ID>|$transfer_id|g" \
-			"${APPDIR}/prepare-transfer.json.template" > "${bodies}/body${i}.json"
-
-		cat <<- EOF >> "$TARGETS"
-		PUT $CLEDG_HOSTNAME/transfers/${transfer_id}
-		@$bodies/body${i}.json
-		EOF
-	done
+report_results(){
+	local output_path=$1
+	local results_path=$2
+	local rate=$3
+	local duration=$4
+	vegeta report -inputs="${output_path}/results.bin" -reporter=json > "${results_path}/metrics_rate${rate}_dur${duration}.json"
+	log "JSON Report Complete"
+	vegeta report -inputs="${output_path}/results.bin" -reporter=text > "${results_path}/metrics_rate${rate}_dur${duration}.txt"
+	log "TXT Report Complete"
+	vegeta report -inputs="${output_path}/results.bin" -reporter=plot > "${results_path}/metrics_rate${rate}_dur${duration}.html"
+	log "HTML(Graph) Report Complete"
 }
 
 main(){
 	prepare
+	log "Begin Performance Test script."
+	TEST_NAME=$1
+	RATE=${2:-10}
+	DURATION=${3:-3}
+	log "rate: $RATE duration: $DURATION workers: $NUMBER_OF_WORKERS"
 	log_ulimits
-	generate_targets
-	vegeta attack -targets="$TARGETS" -workers=$NUMBER_OF_WORKERS -rate $RATE -duration ${DURATION}s > "${RUN}/results.bin"
-	vegeta report -inputs="${RUN}/results.bin" -reporter=json > "${RUN}/metrics.json"
-	vegeta report -inputs="${RUN}/results.bin" -reporter=text > "${RUN}/metrics.txt"
+
+	run_setup_requests $TEST_NAME
+	generate_targets $TEST_NAME $RATE $DURATION
+
+	OUTPUT_PATH="$RUN/perf-test-scenarios/$TEST_NAME"
+	RESULTS_PATH="$OUTPUT_PATH/results"
+	mkdir $RESULTS_PATH
+	vegeta attack -targets="$OUTPUT_PATH/targets.txt" -workers=$NUMBER_OF_WORKERS -rate $RATE -duration ${DURATION}s > "${OUTPUT_PATH}/results.bin"
+  log "Test Complete"
+
+	report_results $OUTPUT_PATH $RESULTS_PATH $RATE $DURATION
 }
 
 main "$@"

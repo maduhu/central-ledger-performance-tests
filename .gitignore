@@ -4,3 +4,5 @@ build
 
 # Generated files
 run
+stack/ecs-task-overrides-perf.json
+node_modules

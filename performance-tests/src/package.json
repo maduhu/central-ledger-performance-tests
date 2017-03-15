@@ -1,0 +1,25 @@
+{
+  "name": "prepare",
+  "version": "0.0.1",
+  "description": "Peformance Test Script for the central-ledger \"prepare\" endoint",
+  "main": "prepare-exec.js",
+  "scripts": {
+    "test": "mocha ./perf-test-scripts/prepare/prepare-tests --compilers js:babel-register --recursive"
+  },
+  "author": "Daniel Shaefer",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^2.9.0",
+    "fs": "0.0.1-security",
+    "shelljs": "^0.7.7",
+    "uuid": "^3.0.1"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.24.0",
+    "babel-preset-es2015": "^6.24.0",
+    "babel-register": "^6.24.0",
+    "chai": "^3.5.0",
+    "mocha": "^3.2.0",
+    "sinon": "^2.0.0-pre.6"
+  }
+}

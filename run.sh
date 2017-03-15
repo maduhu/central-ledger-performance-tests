@@ -30,7 +30,7 @@ PERF_AWS_REGION=${PERF_AWS_REGION:=us-east-1}
 PERF_STACK_NAME=${PERF_STACK_NAME:=central-ledger-perf}
 PERF_EC2_KEY_PAIR_NAME=${PERF_EC2_KEY_PAIR_NAME:-}
 PERF_EC2_KEY_PAIR=${PERF_EC2_KEY_PAIR:-}
-PERF_CENTRAL_LEDGER_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_IMAGE_VERSION:=v1.60.0}
+PERF_CENTRAL_LEDGER_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_IMAGE_VERSION:=v1.61.0}
 LEVELONE_DOCKER_REPO=${LEVELONE_DOCKER_REPO:=modusbox-level1-docker-release.jfrog.io}
 LEVELONE_DOCKER_USER=${LEVELONE_DOCKER_USER:-}
 LEVELONE_DOCKER_PASS=${LEVELONE_DOCKER_PASS:-}
@@ -53,14 +53,17 @@ TEST_CONFIG_FILE="perf-test-conf.properties"
 
 TESTS="${APPDIR}/performance-tests"
 TESTS_IMAGE_VERSION=v1.0.0
+TESTS_DIR=$ECS_VOLUME_HOST_PATH/run
 TESTS_LOG=$ECS_VOLUME_HOST_PATH/run/log
 TESTS_METRICS=$ECS_VOLUME_HOST_PATH/run/metrics.json
 TESTS_METRICS_TEXT=$ECS_VOLUME_HOST_PATH/run/metrics.txt
+TESTS_METRICS_CHART=$ECS_VOLUME_HOST_PATH/run/metrics.html
 TESTS_BODIES=$ECS_VOLUME_HOST_PATH/run/bodies
 TESTS_RESULTS_BIN=$ECS_VOLUME_HOST_PATH/run/results.bin
 TESTS_TARGETS=$ECS_VOLUME_HOST_PATH/run/targets.txt
 TESTS_SHELLLOG=$ECS_VOLUME_HOST_PATH/run/shellLog.log
 
+NOW=$(date +"%Y_%m_%d_%H_%M_%S")
 RUN="${APPDIR}/run"
 
 e_ok() { printf "  ✔  %s\n" "$@" ;}
@@ -189,6 +192,9 @@ create_task_definition_file(){
 }
 
 run_performance_tests(){
+    performance_test_scenario_name=$1
+    performance_test_scenario_rate=${2:-10}
+    performance_test_scenario_duration=${3:-2}
     local elastic_beanstalk_application_name
     local elastic_beanstalk_environment_id
     local elastic_beanstalk_environment_name
@@ -208,7 +214,14 @@ run_performance_tests(){
     e_info 'Running performance tests'
     latest_revision=$($AWS ecs register-task-definition --cli-input-json "file://${RUN}/task-definition.json" | $JQ '.taskDefinition.revision') # side-effect causing
 
-    run_task=$($AWS ecs run-task --task-definition "central-ledger-performance-tests-family:$latest_revision" --count 1 --cluster "$cluster" | $JQ '.tasks[0]') # side-effect causing
+
+    sed \
+        -e "s|<PERF_SCENARIO_NAME>|$performance_test_scenario_name|g" \
+        -e "s|<PERF_SCENARIO_RATE>|$performance_test_scenario_rate|g" \
+        -e "s|<PERF_SCENARIO_DURATION>|$performance_test_scenario_duration|g" \
+        "${APPDIR}/stack/ecs-task-overrides-perf.template" > "${APPDIR}/stack/ecs-task-overrides-perf.json"
+    run_task_overrides="--overrides file://${APPDIR}/stack/ecs-task-overrides-perf.json"
+    run_task=$($AWS ecs run-task --task-definition "central-ledger-performance-tests-family:$latest_revision" $run_task_overrides --count 1 --cluster "$cluster" | $JQ '.tasks[0]') # side-effect causing
     task_id=$(echo "$run_task" | $JQ '.taskArn')
     container_instance_id=$(echo "$run_task" | $JQ '.containerInstanceArn')
     ec2_instance=$($AWS ecs describe-container-instances --cluster="$cluster" --container-instances "$container_instance_id" | $JQ '.containerInstances[0].ec2InstanceId')
@@ -218,29 +231,8 @@ run_performance_tests(){
     $AWS ecs wait tasks-stopped --tasks "$task_id" --cluster "$cluster"
 
     e_info "About to copy some files from $ec2_ip to local"
-    NOW=$(date +"%Y_%m_%d_%H_%M_%S")
-
-    e_info "Writing performance test logs to '${RUN}/performance-tests.log'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_LOG" "${RUN}/performance-tests.log"
-    e_info "Writing performance test metrics to '${RUN}/performance-tests-metrics.json'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_METRICS" "${RUN}/results-$NOW.json"
-    e_info "Writing performance test metrics to '${RUN}/performance-tests-metrics.txt'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_METRICS_TEXT" "${RUN}/results-$NOW.txt"
-
-    #e_info "Copy out bodies files"
-    #scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_BODIES" "${RUN}/bodies"
-
-    e_info "Copy out a single body file"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_BODIES/body1.json" "${RUN}/body1.json"
-
-    e_info "Writing performance test raw result file to '${RUN}/results.bin'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_RESULTS_BIN" "${RUN}/results.bin"
-
-    e_info "Writing performance test targets file to '${RUN}/targets.txt'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_TARGETS" "${RUN}/targets.txt"
-
-    e_info "Writing performance test shell logs to '${RUN}/shellLog.log'"
-    scp -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_SHELLLOG" "${RUN}/shellLog.log"
+    mkdir -p "${RUN}/$performance_test_scenario_name/$NOW"
+    scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_DIR/perf-test-scenarios/$performance_test_scenario_name/results" "${RUN}/$performance_test_scenario_name/$NOW"
 }
 
 deploy_central_ledger_to_stack(){
@@ -312,26 +304,26 @@ main(){
     e_info "EC2 Key Pair: '${PERF_EC2_KEY_PAIR}'"
 
     #Build AWS Infrastructure
-    clean
-    prepare
-    sanity_checks
-    create_launch_params_file
-    create_stack
-    wait_for_stack_completion
+    #clean
+    #prepare
+    #sanity_checks
+    #create_launch_params_file
+    #create_stack
+    #wait_for_stack_completion
 
     #Deploy Central Ledger
-    push_central_ledger_image_to_stack
-    create_dockerrun_file
-    deploy_central_ledger_to_stack
+    #push_central_ledger_image_to_stack
+    #create_dockerrun_file
+    #deploy_central_ledger_to_stack
 
     #Deploy PerformanceTestingImageAndTaskDef
     push_performance_tests_image_to_stack
     create_task_definition_file
 
     #Excecute the Performance tests defined in the performance tests stack.
-    run_performance_tests
+    run_performance_tests "prepare" 10 4
 
-    force_delete_stack
+    #force_delete_stack
     e_finish
 }
 
