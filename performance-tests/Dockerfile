@@ -1,5 +1,4 @@
 FROM mhart/alpine-node:6.5.0
-#FROM alpine:3.5
 
 WORKDIR /opt/central-ledger-performance-tests
 COPY src/ /opt/central-ledger-performance-tests/
@@ -12,7 +11,6 @@ RUN apk add --no-cache curl ca-certificates util-linux bash tar openssl && \
   chmod +x /usr/local/bin/vegeta && \
   chmod +x /opt/central-ledger-performance-tests/run.sh && \
   chmod -R +x /opt/central-ledger-performance-tests/perf-test-scripts && \
-  ls -la /opt/central-ledger-performance-tests/* && \
   cd /opt/central-ledger-performance-tests && \
   npm install
 
