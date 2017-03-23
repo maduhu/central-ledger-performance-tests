@@ -7,7 +7,7 @@
 #
 # Environment variables:
 # PERF_AWS_REGION: [String] The AWS region where the tests are run
-#                  (default: eu-central-1)
+#                  (default: us-east-1)
 # PERF_STACK_NAME: [String] Name of the AWS Cloudformation stack where the tests
 #                  are run
 #                  (default: central-ledger-perf)
@@ -16,8 +16,8 @@
 # PERF_EC2_KEY_PAIR: [String] Declares the location of the AWS EC2 key pair file
 #                    specified for PERF_EC2_KEY_PAIR_NAME
 # PERF_CENTRAL_LEDGER_IMAGE_VERSION: [String] The version of central-ledger to
-#                                    run tests against
-#                                    (default: 1.52.0)
+#                                    run tests against (e.g. v1.72.0 or latest)
+#                                    (default: latest)
 # LEVELONE_DOCKER_REPO: [String] The URL of the LevelOne Docker repository
 #                       (default: modusbox-level1-docker-release.jfrog.io)
 # LEVELONE_DOCKER_USER: [String] Declares the username of the LevelOne Docker
@@ -211,7 +211,8 @@ run_performance_tests(){
     elastic_beanstalk_environment_name=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .EnvironmentName')
     cluster="awseb-${elastic_beanstalk_environment_name}-${elastic_beanstalk_environment_id:2}"
 
-    e_info 'Running performance tests'
+    #estimate_test_time=($performance_test_scenario_rate*$performance_test_scenario_duration/50) + $performance_test_scenario_duration
+    e_info "Running performance tests $performance_test_scenario_name rate:$performance_test_scenario_rate duration:$performance_test_scenario_duration"
     latest_revision=$($AWS ecs register-task-definition --cli-input-json "file://${RUN}/task-definition.json" | $JQ '.taskDefinition.revision') # side-effect causing
 
 
@@ -227,12 +228,14 @@ run_performance_tests(){
     ec2_instance=$($AWS ecs describe-container-instances --cluster="$cluster" --container-instances "$container_instance_id" | $JQ '.containerInstances[0].ec2InstanceId')
     ec2_ip=$($AWS ec2 describe-instances --instance-ids "$ec2_instance" | $JQ '.Reservations[0].Instances[0].PublicIpAddress')
 
-    e_info "Waiting for performance tests to complete ..."
+    e_info "Waiting for performance tests to complete for task_id: $task_id cluster: $cluster"
+    task_output=$($AWS ecs describe-tasks --tasks "$task_id" --cluster "$cluster" | $JQ '.tasks[0].lastStatus')
+    e_info $task_output
     $AWS ecs wait tasks-stopped --tasks "$task_id" --cluster "$cluster"
 
     e_info "About to copy some files from $ec2_ip to local"
     mkdir -p "${RUN}/$performance_test_scenario_name/$NOW"
-    scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_DIR/perf-test-scenarios/$performance_test_scenario_name/results" "${RUN}/$performance_test_scenario_name/$NOW"
+    scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/results" "${RUN}/$performance_test_scenario_name/$NOW"
 }
 
 deploy_central_ledger_to_stack(){
@@ -262,6 +265,15 @@ deploy_central_ledger_to_stack(){
         --environment-id "$elastic_beanstalk_environment_id" \
         --version-label "$version_label" \
         --option-settings "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLEDG_HOSTNAME,Value=http://${elastic_beanstalk_application_cname}"
+
+    e_info "Waiting for elasticbeanstalk $elastic_beanstalk_environment_id to update"
+    EB_STATUS="NONE"
+    while [[ $EB_STATUS != "Ready" ]] ; do
+      e_info "CURRENT STATUS: $EB_STATUS"
+      EB_STATUS=$($AWS elasticbeanstalk describe-environments --environment-ids $elastic_beanstalk_environment_id | $JQ '.Environments[0].Status')
+      sleep 10
+    done
+    e_info "elasticbeanstalk $elastic_beanstalk_environment_id status: Ready"
 }
 
 delete_stack() {
@@ -304,24 +316,25 @@ main(){
     e_info "EC2 Key Pair: '${PERF_EC2_KEY_PAIR}'"
 
     #Build AWS Infrastructure
-    #clean
-    #prepare
-    #sanity_checks
-    #create_launch_params_file
-    #create_stack
-    #wait_for_stack_completion
+    clean
+    prepare
+    sanity_checks
+    create_launch_params_file
+    create_stack
+    wait_for_stack_completion
 
     #Deploy Central Ledger
-    #push_central_ledger_image_to_stack
-    #create_dockerrun_file
-    #deploy_central_ledger_to_stack
+    push_central_ledger_image_to_stack
+    create_dockerrun_file
+    deploy_central_ledger_to_stack
 
     #Deploy PerformanceTestingImageAndTaskDef
     push_performance_tests_image_to_stack
     create_task_definition_file
 
     #Excecute the Performance tests defined in the performance tests stack.
-    run_performance_tests "prepare" 10 4
+    run_performance_tests "fulfill" 10 10
+    run_performance_tests "prepare" 10 10
 
     #force_delete_stack
     e_finish

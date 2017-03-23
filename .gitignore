@@ -6,3 +6,4 @@ build
 run
 stack/ecs-task-overrides-perf.json
 node_modules
+setup

@@ -1,5 +1,4 @@
-const PrepareRequestBodyTemplate = (fs, testName) => {
-  let templateFile = `perf-test-scripts/${testName}/${testName}-exec.json.template`
+const PrepareRequestBodyTemplate = (fs, templateFile) => {
   let reqTemplate = fs.readFileSync(templateFile, "utf8");
 
   const create = (hostNameUrl, uuid) => {

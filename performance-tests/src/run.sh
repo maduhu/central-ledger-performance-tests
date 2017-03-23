@@ -9,7 +9,7 @@ RUN="$ECS_CONTAINER_PATH/run"
 TARGETS="$RUN/targets.txt"
 APPLOG="$RUN/shellLog.log"
 
-NUMBER_OF_WORKERS=1
+NUMBER_OF_WORKERS=10
 
 log(){
 	local timestamp=$(date +"%Y_%m_%d_%H_%M_%S.%N")
@@ -33,10 +33,12 @@ log_ulimits(){
 
 run_setup_requests() {
 	local test_name=$1
-	log "Run $test_name-setup.js $test_name $CLEDG_HOSTNAME"
+	local rate=$2
+	local duration=$3
+	log "Run $test_name-setup.js $test_name $rate $duration $CLEDG_HOSTNAME $RUN"
 	if [[ -x "perf-test-scripts/$test_name/$test_name-setup.js" ]];
 	then
-		node "perf-test-scripts/$test_name/$test_name-setup.js" $test_name $CLEDG_HOSTNAME
+		node "perf-test-scripts/$test_name/$test_name-setup.js" $test_name $rate $duration $CLEDG_HOSTNAME $RUN
 	fi
 }
 
@@ -44,7 +46,7 @@ generate_targets(){
 	local test_name=$1
 	local rate=$2
 	local duration=$3
-	log "Run $test_name-exec.js $test_name $rate $duration $CLEDG_HOSTNAME"
+	log "Run $test_name-exec.js $test_name $rate $duration $CLEDG_HOSTNAME $RUN"
 	node "perf-test-scripts/$test_name/$test_name-exec.js" $test_name $rate $duration $CLEDG_HOSTNAME $RUN
 	log "Targets Generated"
 }
@@ -71,12 +73,12 @@ main(){
 	log "rate: $RATE duration: $DURATION workers: $NUMBER_OF_WORKERS"
 	log_ulimits
 
-	run_setup_requests $TEST_NAME
+	run_setup_requests $TEST_NAME $RATE $DURATION
 	generate_targets $TEST_NAME $RATE $DURATION
 
-	OUTPUT_PATH="$RUN/perf-test-scenarios/$TEST_NAME"
+	OUTPUT_PATH="$RUN/perf-test-scripts/$TEST_NAME"
 	RESULTS_PATH="$OUTPUT_PATH/results"
-	mkdir $RESULTS_PATH
+	mkdir -p $RESULTS_PATH
 	vegeta attack -targets="$OUTPUT_PATH/targets.txt" -workers=$NUMBER_OF_WORKERS -rate $RATE -duration ${DURATION}s > "${OUTPUT_PATH}/results.bin"
   log "Test Complete"
 

@@ -17,5 +17,5 @@ const runPath = commandLineArguments[4];
 
 let requestTemplate = PrepareRequestBodyTemplate(Fs, testName);
 let builder = PerformanceTestRequestBuilder(Shell, Fs, uuidV4, requestTemplate);
-let outputPath = `${runPath}/perf-test-scenarios/${testName}`;
+let outputPath = `${runPath}/perf-test-scripts/${testName}`;
 builder.build(rate, duration, hostNameUrl, outputPath);

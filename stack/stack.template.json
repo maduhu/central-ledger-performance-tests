@@ -396,6 +396,11 @@
                         }
                     },
                     {
+                        "Namespace": "aws:autoscaling:asg",
+                        "OptionName": "MaxSize",
+                        "Value": "1"
+                    },
+                    {
                         "Namespace": "aws:autoscaling:launchconfiguration",
                         "OptionName": "InstanceType",
                         "Value": "t2.micro"
