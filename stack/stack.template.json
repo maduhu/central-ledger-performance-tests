@@ -65,6 +65,27 @@
                 ]
             }
         },
+        "CentralLedgerAdminRepositoryURL": {
+            "Description": "The central-ledger-admin repository URL",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        {
+                            "Ref": "AWS::AccountId"
+                        },
+                        ".dkr.ecr.",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        ".amazonaws.com/",
+                        {
+                            "Ref": "CentralLedgerAdminRepository"
+                        }
+                    ]
+                ]
+            }
+        },
         "PerformanceTestsRepositoryURL": {
             "Description": "The docker repository URL",
             "Value": {
@@ -218,6 +239,56 @@
             },
             "Type": "AWS::ECR::Repository"
         },
+        "CentralLedgerAdminRepository": {
+            "Properties": {
+                "RepositoryName": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            {
+                                "Ref": "AWS::StackName"
+                            },
+                            "-central-ledger-admin"
+                        ]
+                    ]
+                },
+                "RepositoryPolicyText": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:BatchGetImage",
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:PutImage",
+                                "ecr:InitiateLayerUpload",
+                                "ecr:UploadLayerPart",
+                                "ecr:CompleteLayerUpload"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": [
+                                    {
+                                        "Fn::Join": [
+                                            "",
+                                            [
+                                                "arn:aws:iam::",
+                                                {
+                                                    "Ref": "AWS::AccountId"
+                                                },
+                                                ":root"
+                                            ]
+                                        ]
+                                    }
+                                ]
+                            },
+                            "Sid": "AllowPushPull"
+                        }
+                    ],
+                    "Version": "2008-10-17"
+                }
+            },
+            "Type": "AWS::ECR::Repository"
+        },
         "ContainerARouteTableAssociation": {
             "Properties": {
                 "RouteTableId": {
@@ -291,6 +362,18 @@
                         "FromPort": 80,
                         "IpProtocol": "tcp",
                         "ToPort": 80
+                    },
+                    {
+                        "CidrIp": "10.0.2.0/24",
+                        "FromPort": 3001,
+                        "IpProtocol": "tcp",
+                        "ToPort": 3001
+                    },
+                    {
+                        "CidrIp": "10.0.3.0/24",
+                        "FromPort": 3001,
+                        "IpProtocol": "tcp",
+                        "ToPort": 3001
                     }
                 ],
                 "VpcId": {
@@ -446,6 +529,11 @@
                                 ]
                             ]
                         }
+                    },
+                    {
+                        "Namespace": "aws:elb:listener:3001",
+                        "OptionName": "InstancePort",
+                        "Value": "3001"
                     },
                     {
                         "Namespace": "aws:elasticbeanstalk:application:environment",

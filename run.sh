@@ -27,10 +27,11 @@
 set -euo pipefail
 
 PERF_AWS_REGION=${PERF_AWS_REGION:=us-east-1}
-PERF_STACK_NAME=${PERF_STACK_NAME:=central-ledger-perf}
+PERF_STACK_NAME=${PERF_STACK_NAME:=central-ledger-perf-with-admin1}
 PERF_EC2_KEY_PAIR_NAME=${PERF_EC2_KEY_PAIR_NAME:-}
 PERF_EC2_KEY_PAIR=${PERF_EC2_KEY_PAIR:-}
-PERF_CENTRAL_LEDGER_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_IMAGE_VERSION:=latest}
+PERF_CENTRAL_LEDGER_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_IMAGE_VERSION:=v1.74.0}
+PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION:=v1.74.0}
 LEVELONE_DOCKER_REPO=${LEVELONE_DOCKER_REPO:=modusbox-level1-docker-release.jfrog.io}
 LEVELONE_DOCKER_USER=${LEVELONE_DOCKER_USER:-}
 LEVELONE_DOCKER_PASS=${LEVELONE_DOCKER_PASS:-}
@@ -128,16 +129,18 @@ get_central_ledger_ecr(){
     $AWS ecr describe-repositories | $JQ '.repositories[] | select(.repositoryName == "'"$PERF_STACK_NAME-central-ledger"'") | .repositoryUri'
 }
 
+get_central_ledger_admin_ecr(){
+    $AWS ecr describe-repositories | $JQ '.repositories[] | select(.repositoryName == "'"$PERF_STACK_NAME-central-ledger-admin"'") | .repositoryUri'
+}
+
 get_performance_tests_ecr(){
     $AWS ecr describe-repositories | $JQ '.repositories[] | select(.repositoryName == "'"$PERF_STACK_NAME-performance-tests"'") | .repositoryUri'
 }
 
 push_central_ledger_image_to_stack(){
-    local ecr_repository_uri
+    local ecr_repository_uri="$(get_central_ledger_ecr)"
 
-    ecr_repository_uri="$(get_central_ledger_ecr)"
-
-    e_info "Pulling Central-ledger image from $LEVELONE_DOCKER_REPO/central-ledger:$PERF_CENTRAL_LEDGER_IMAGE_VERSION"
+    e_info "Pulling Central-ledger from $LEVELONE_DOCKER_REPO/central-ledger:$PERF_CENTRAL_LEDGER_IMAGE_VERSION"
     docker login -u "$LEVELONE_DOCKER_USER" -p "$LEVELONE_DOCKER_PASS" $LEVELONE_DOCKER_REPO
     docker pull "$LEVELONE_DOCKER_REPO/leveloneproject/central-ledger:$PERF_CENTRAL_LEDGER_IMAGE_VERSION"
 
@@ -147,10 +150,21 @@ push_central_ledger_image_to_stack(){
     docker push "$ecr_repository_uri:$PERF_CENTRAL_LEDGER_IMAGE_VERSION"
 }
 
-push_performance_tests_image_to_stack(){
-    local ecr_repository_uri
+push_central_ledger_admin_image_to_stack(){
+  local ecr_admin_repository_uri="$(get_central_ledger_admin_ecr)"
 
-    ecr_repository_uri="$(get_performance_tests_ecr)"
+  e_info "Pulling Central-ledger-admin image from $LEVELONE_DOCKER_REPO/central-ledger-admin:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION"
+  docker login -u "$LEVELONE_DOCKER_USER" -p "$LEVELONE_DOCKER_PASS" $LEVELONE_DOCKER_REPO
+  docker pull "$LEVELONE_DOCKER_REPO/leveloneproject/central-ledger-admin:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION"
+
+  e_info "Pushing Central-ledger-admin image to ECR"
+  eval "$($AWS ecr get-login --region $PERF_AWS_REGION)"
+  docker tag $LEVELONE_DOCKER_REPO/leveloneproject/central-ledger-admin:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION "${ecr_admin_repository_uri}:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION"
+  docker push "$ecr_admin_repository_uri:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION"
+}
+
+push_performance_tests_image_to_stack(){
+    local ecr_repository_uri="$(get_performance_tests_ecr)"
 
     e_info "Building Performance Tests image"
 
@@ -163,13 +177,13 @@ push_performance_tests_image_to_stack(){
 }
 
 create_dockerrun_file(){
-    local ecr_repository_uri
-
-    ecr_repository_uri="$(get_central_ledger_ecr)"
+    local ecr_repository_uri="$(get_central_ledger_ecr)"
+    local ecr_admin_repository_uri="$(get_central_ledger_admin_ecr)"
 
     e_info 'Creating Dockerrun.aws.json file'
     sed \
         -e "s|<DOCKER_IMAGE>|$ecr_repository_uri:$PERF_CENTRAL_LEDGER_IMAGE_VERSION|g" \
+        -e "s|<DOCKER_IMAGE_ADMIN>|$ecr_admin_repository_uri:$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION|g" \
         "$EB_DOCKERRUN_AWS_TEMPLATE" > "${RUN}/Dockerrun.aws.json"
 }
 
@@ -249,7 +263,7 @@ deploy_central_ledger_to_stack(){
     elastic_beanstalk_application_cname=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .CNAME')
     elastic_beanstalk_environment_id=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .EnvironmentId')
     elastic_beanstalk_storage=$($AWS elasticbeanstalk create-storage-location | $JQ '.S3Bucket')
-    version_label=$( (cat "${RUN}/Dockerrun.aws.json" ; echo $PERF_CENTRAL_LEDGER_IMAGE_VERSION) | shasum -a 1 | awk '{print $1}' )
+    version_label=$( (cat "${RUN}/Dockerrun.aws.json" ; echo $PERF_CENTRAL_LEDGER_IMAGE_VERSION$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION) | shasum -a 1 | awk '{print $1}' )
 
     e_info 'Deploying Central Ledger to stack'
     e_info "$elastic_beanstalk_application_cname"
@@ -325,6 +339,7 @@ main(){
 
     #Deploy Central Ledger
     push_central_ledger_image_to_stack
+    push_central_ledger_admin_image_to_stack
     create_dockerrun_file
     deploy_central_ledger_to_stack
 

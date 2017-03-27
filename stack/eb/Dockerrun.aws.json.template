@@ -19,6 +19,25 @@
                     "readOnly": true
                 }
             ]
+        },
+        {
+            "name": "central-ledger-admin",
+            "image": "<DOCKER_IMAGE_ADMIN>",
+            "essential": true,
+            "memory": 256,
+            "portMappings": [
+                {
+                    "hostPort": 3001,
+                    "containerPort": 3001
+                }
+            ],
+            "mountPoints": [
+                {
+                    "sourceVolume": "awseb-logs-central-ledger-admin",
+                    "containerPath": "/var/log/nodejs/nodejs-admin.log",
+                    "readOnly": true
+                }
+            ]
         }
     ]
 }
