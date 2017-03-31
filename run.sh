@@ -27,7 +27,7 @@
 set -euo pipefail
 
 PERF_AWS_REGION=${PERF_AWS_REGION:=us-east-1}
-PERF_STACK_NAME=${PERF_STACK_NAME:=central-ledger-perf-with-admin1}
+PERF_STACK_NAME=${PERF_STACK_NAME:=central-ledger-perf}
 PERF_EC2_KEY_PAIR_NAME=${PERF_EC2_KEY_PAIR_NAME:-}
 PERF_EC2_KEY_PAIR=${PERF_EC2_KEY_PAIR:-}
 PERF_CENTRAL_LEDGER_IMAGE_VERSION=${PERF_CENTRAL_LEDGER_IMAGE_VERSION:=v1.74.0}
@@ -203,12 +203,14 @@ create_task_definition_file(){
         -e "s|<ECS_VOLUME_HOST_PATH>|$ECS_VOLUME_HOST_PATH|g" \
         -e "s|<ECS_CONTAINER_PATH>|$ECS_CONTAINER_PATH|g" \
         "${ECS_TASK_DEFINITION_TEMPLATE}" > "${RUN}/task-definition.json"
+    e_info "Task definition creation complete"
 }
 
 run_performance_tests(){
     performance_test_scenario_name=$1
     performance_test_scenario_rate=${2:-10}
     performance_test_scenario_duration=${3:-2}
+    e_info "Running perf test $performance_test_scenario_name"
     local elastic_beanstalk_application_name
     local elastic_beanstalk_environment_id
     local elastic_beanstalk_environment_name
@@ -243,12 +245,15 @@ run_performance_tests(){
     ec2_ip=$($AWS ec2 describe-instances --instance-ids "$ec2_instance" | $JQ '.Reservations[0].Instances[0].PublicIpAddress')
 
     e_info "Waiting for performance tests to complete for task_id: $task_id cluster: $cluster"
+    e_info "Use following command plus a destination to pull down the results if the wait times out."
+    e_info "scp -r -o StrictHostKeyChecking no -i $PERF_EC2_KEY_PAIR ec2-user@$ec2_ip:$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/results"
     task_output=$($AWS ecs describe-tasks --tasks "$task_id" --cluster "$cluster" | $JQ '.tasks[0].lastStatus')
     e_info $task_output
     $AWS ecs wait tasks-stopped --tasks "$task_id" --cluster "$cluster"
 
     e_info "About to copy some files from $ec2_ip to local"
     mkdir -p "${RUN}/$performance_test_scenario_name/$NOW"
+
     scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/results" "${RUN}/$performance_test_scenario_name/$NOW"
 }
 
@@ -263,7 +268,7 @@ deploy_central_ledger_to_stack(){
     elastic_beanstalk_application_cname=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .CNAME')
     elastic_beanstalk_environment_id=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .EnvironmentId')
     elastic_beanstalk_storage=$($AWS elasticbeanstalk create-storage-location | $JQ '.S3Bucket')
-    version_label=$( (cat "${RUN}/Dockerrun.aws.json" ; echo $PERF_CENTRAL_LEDGER_IMAGE_VERSION$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION) | shasum -a 1 | awk '{print $1}' )
+    version_label=$( (cat "${RUN}/Dockerrun.aws.json" ; echo $PERF_CENTRAL_LEDGER_IMAGE_VERSION$PERF_CENTRAL_LEDGER_ADMIN_IMAGE_VERSION$NOW) | shasum -a 1 | awk '{print $1}' )
 
     e_info 'Deploying Central Ledger to stack'
     e_info "$elastic_beanstalk_application_cname"
@@ -288,6 +293,8 @@ deploy_central_ledger_to_stack(){
       sleep 10
     done
     e_info "elasticbeanstalk $elastic_beanstalk_environment_id status: Ready"
+
+    #Verify that the instance stays green for some period of time (6 seconds after complete it goes yellow b/c it is still waiting for load balancer to find a healthy instance)
 }
 
 delete_stack() {
@@ -322,34 +329,45 @@ force_delete_stack(){
     wait_for_stack_deletion
 }
 
+build_infrastructure(){
+  clean
+  prepare
+  sanity_checks
+  create_launch_params_file
+  create_stack
+  wait_for_stack_completion
+}
+
+deploy_ledger_and_ledger_admin(){
+  push_central_ledger_image_to_stack
+  push_central_ledger_admin_image_to_stack
+  create_dockerrun_file
+  deploy_central_ledger_to_stack
+}
+
+deploy_performance_testing_image(){
+  push_performance_tests_image_to_stack
+  create_task_definition_file
+}
+
+run_all_performance_tests(){
+  run_performance_tests "fulfill" 150 120
+  run_performance_tests "prepare" 150 120
+  run_performance_tests "fulfillWithFee" 150 120
+}
+
 main(){
+    PERF_STACK_NAME=${1:-$PERF_STACK_NAME}
     e_info "AWS Region: '${PERF_AWS_REGION}'"
     e_info "Stack Name: '${PERF_STACK_NAME}'"
     e_info "Central-ledger Image Version: '${PERF_CENTRAL_LEDGER_IMAGE_VERSION}'"
     e_info "EC2 Key Pair Name: '${PERF_EC2_KEY_PAIR_NAME}'"
     e_info "EC2 Key Pair: '${PERF_EC2_KEY_PAIR}'"
 
-    #Build AWS Infrastructure
-    clean
-    prepare
-    sanity_checks
-    create_launch_params_file
-    create_stack
-    wait_for_stack_completion
-
-    #Deploy Central Ledger
-    push_central_ledger_image_to_stack
-    push_central_ledger_admin_image_to_stack
-    create_dockerrun_file
-    deploy_central_ledger_to_stack
-
-    #Deploy PerformanceTestingImageAndTaskDef
-    push_performance_tests_image_to_stack
-    create_task_definition_file
-
-    #Excecute the Performance tests defined in the performance tests stack.
-    run_performance_tests "fulfill" 10 10
-    run_performance_tests "prepare" 10 10
+    build_infrastructure
+    deploy_ledger_and_ledger_admin
+    deploy_performance_testing_image
+    run_all_performance_tests
 
     #force_delete_stack
     e_finish

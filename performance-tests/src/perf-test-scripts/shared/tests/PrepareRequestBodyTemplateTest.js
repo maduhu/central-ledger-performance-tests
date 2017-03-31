@@ -10,9 +10,9 @@ describe('PrepareRequestBodyTemplate', function() {
       var fsStub = sinon.stub(fs, 'readFileSync').returns(expectedTemplateFile);
 
       const testName = "somePath";
-      const expectedFilePath = `perf-test-scripts/${testName}/${testName}-exec.json.template`;
+      const expectedFilePath = `perf-test-scripts/shared/${testName}-exec.json.template`;
 
-      const templateBuilder = PrepareRequestBodyTemplate(fs, testName);
+      const templateBuilder = PrepareRequestBodyTemplate(fs, expectedFilePath);
       const result = templateBuilder.create("a", "b");
       const result2 = templateBuilder.create("c", "d");
 

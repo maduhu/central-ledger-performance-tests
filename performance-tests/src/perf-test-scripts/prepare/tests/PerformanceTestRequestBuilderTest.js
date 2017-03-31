@@ -38,8 +38,8 @@ describe('PerformanceTestRequestBuilder', function() {
       const requestBodyPath = "outputPath/bodies"
       const assertForIteration = (i) => {
           const expectedTargetData = `PUT ${hostNameUrl}/transfers/${i}
-      @${requestBodyPath}/body${i}.json
-      `
+@${requestBodyPath}/body${i}.json
+`
           assert.isTrue(fs.appendFileSync.calledWith(
             requestBodyPath + `/body${i}.json`,
             hostNameUrl + i

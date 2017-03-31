@@ -15,8 +15,8 @@ const PerformanceTestRequestBuilder = (shell, fs, uuidGen, requestTemplate) => {
       fs.appendFileSync(requestBodyPath, requestBody);
 
       let targetData = `PUT ${hostNameUrl}/transfers/${uuid}
-      @${requestBodyPath}
-      `
+@${requestBodyPath}
+`
       fs.appendFileSync(targetsFile, targetData);
     }
   }

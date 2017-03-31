@@ -4,7 +4,7 @@
   "description": "Peformance Test Script for the central-ledger \"prepare\" endoint",
   "main": "prepare-exec.js",
   "scripts": {
-    "test": "mocha ./perf-test-scripts/prepare/prepare-tests --compilers js:babel-register --recursive"
+    "test": "mocha ./perf-test-scripts/**/tests --compilers js:babel-register --recursive"
   },
   "author": "Daniel Shaefer",
   "license": "ISC",

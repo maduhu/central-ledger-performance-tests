@@ -4,6 +4,7 @@ const Fs = require('fs');
 const Shell = require('shelljs');
 const PrepareRequestBuilder = require('../shared/PrepareRequestBuilder');
 const PrepareRequestBodyTemplate = require('../shared/PrepareRequestBodyTemplate');
+const ChargeRequestBuilder = require('./ChargeRequestBuilder');
 const uuidV4 = require('uuid/v4');
 const Unirest = require('unirest');
 
@@ -15,6 +16,7 @@ const rate = parseInt(commandLineArguments[1], 10);
 const duration = parseInt(commandLineArguments[2], 10);
 const hostNameUrl = commandLineArguments[3];
 const runPath = commandLineArguments[4];
+const adminUrl = `${hostNameUrl}:3001`;
 
 console.log(hostNameUrl);
 console.log(runPath);
@@ -27,6 +29,8 @@ console.log(outputPath);
 let templateFile = `perf-test-scripts/shared/prepare-request.json.template`
 let requestTemplate = PrepareRequestBodyTemplate(Fs, templateFile);
 let builder = PrepareRequestBuilder(Shell, Fs, Unirest, uuidV4, requestTemplate);
+let chargeCreator = ChargeRequestBuilder(Unirest, adminUrl);
+
 
 let setupComplete = (complete) => {
   if (!complete) {
@@ -42,6 +46,13 @@ let setupComplete = (complete) => {
   }
 };
 
+let chargesCreated = (complete) => {
+  console.log("charges created");
+  if (complete)
+    builder.build(rate * duration, hostNameUrl, outputPath, setupComplete);
+  else {
+    console.log("Charges did not complete successfully.");
+  }
+}
 
-
-builder.build(rate * duration, hostNameUrl, outputPath, setupComplete);
+chargeCreator.build(chargesCreated);

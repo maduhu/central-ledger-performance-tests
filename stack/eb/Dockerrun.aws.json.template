@@ -5,7 +5,7 @@
             "name": "central-ledger",
             "image": "<DOCKER_IMAGE>",
             "essential": true,
-            "memory": 256,
+            "memoryReservation": 256,
             "portMappings": [
                 {
                     "hostPort": 80,
@@ -23,8 +23,8 @@
         {
             "name": "central-ledger-admin",
             "image": "<DOCKER_IMAGE_ADMIN>",
-            "essential": true,
-            "memory": 256,
+            "essential": false,
+            "memoryReservation": 64,
             "portMappings": [
                 {
                     "hostPort": 3001,
