@@ -1,4 +1,6 @@
-const FulfillRequestBuilder = (shell, fs, idsFile) => {
+const shell = require('shelljs');
+const fs = require('fs');
+const FulfillRequestBuilder = (idsFile) => {
   let data = fs.readFileSync(idsFile, 'utf8');
   const ids = data.split("\n");
 

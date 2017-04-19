@@ -1,15 +1,15 @@
 {
-  "id": "<LEDGER_URL>/transfers/<TRANSFER_ID>",	
+  "id": "<LEDGER_URL>/transfers/<TRANSFER_ID>",
   "ledger": "<LEDGER_URL>",
   "debits": [
     {
-      "account": "<LEDGER_URL>/accounts/TestDFSP1",
+      "account": "<LEDGER_URL>/accounts/<SENDER_ACCOUNT>",
       "amount": "50"
     }
   ],
   "credits": [
     {
-      "account": "<LEDGER_URL>/accounts/TestDFSP2",
+      "account": "<LEDGER_URL>/accounts/<RECEIVER_ACCOUNT>",
       "amount": "50"
     }
   ],

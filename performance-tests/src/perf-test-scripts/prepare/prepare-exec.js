@@ -1,23 +1,14 @@
-#!/usr/bin/env node
+const PerformanceTestRequestBuilder = require('../shared/PerformanceTestRequestBuilder');
+const PrepareRequestBodyTemplate = require('../shared/PrepareRequestBodyTemplate');
 
-const Fs = require('fs');
-const Shell = require('shelljs');
-const PerformanceTestRequestBuilder = require('./PerformanceTestRequestBuilder');
-const PrepareRequestBodyTemplate = require('../shared/PrepareRequestBodyTemplate')
-const uuidV4 = require('uuid/v4');
+const run = (rate, duration, hostNameUrl, outputPath, setupConfig) => {
+  console.log("Inside the prepare exec run");
+  let templateFile = `shared/prepare-request.json.template`;
 
-const commandLineArguments = process.argv.slice(2);
+  let requestTemplate = PrepareRequestBodyTemplate(templateFile, setupConfig.accounts[0].name, setupConfig.accounts[1].name);
 
-//break down args
-const testName = commandLineArguments[0];
-const rate = parseInt(commandLineArguments[1], 10);
-const duration = parseInt(commandLineArguments[2], 10);
-const hostNameUrl = commandLineArguments[3];
-const runPath = commandLineArguments[4];
+  let builder = PerformanceTestRequestBuilder(requestTemplate);
+  builder.build(rate, duration, hostNameUrl, outputPath);
+};
 
-let templateFile = `perf-test-scripts/shared/prepare-request.json.template`
-let requestTemplate = PrepareRequestBodyTemplate(Fs, templateFile);
-
-let builder = PerformanceTestRequestBuilder(Shell, Fs, uuidV4, requestTemplate);
-let outputPath = `${runPath}/perf-test-scripts/${testName}`;
-builder.build(rate, duration, hostNameUrl, outputPath);
+module.exports = run;

@@ -1,6 +1,14 @@
 {
   "containerOverrides": [{
     "name": "central-ledger-performance-tests",
-    "command": ["<PERF_SCENARIO_NAME>", "<PERF_SCENARIO_RATE>", "<PERF_SCENARIO_DURATION>"]
+    "command": [
+      "<PERF_SCENARIO_NAME>",
+      "<PERF_SCENARIO_HOSTNAMEURL>",
+      "<PERF_SCENARIO_BASE_OUTPUT>",
+      "<PERF_SCENARIO_RATE>",
+      "<PERF_SCENARIO_DURATION>",
+      "<PERF_SCENARIO_CHARGES>",
+      "<PERF_SCENARIO_LISTENERS>"
+    ]
   }]
 }

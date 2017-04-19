@@ -210,6 +210,8 @@ run_performance_tests(){
     performance_test_scenario_name=$1
     performance_test_scenario_rate=${2:-10}
     performance_test_scenario_duration=${3:-2}
+    performance_test_scenario_withCharges=${4:-"false"}
+    performance_test_scenario_withWebsocketListeners=${5:-"false"}
     e_info "Running perf test $performance_test_scenario_name"
     local elastic_beanstalk_application_name
     local elastic_beanstalk_environment_id
@@ -221,21 +223,26 @@ run_performance_tests(){
     local container_instance_id
     local ec2_instance
     local ec2_ip
+    local eb_hostname
 
     elastic_beanstalk_application_name=$($AWS cloudformation describe-stack-resources --stack-name $PERF_STACK_NAME | $JQ '.StackResources[] | select(.ResourceType == "AWS::ElasticBeanstalk::Application") | .PhysicalResourceId')
     elastic_beanstalk_environment_id=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .EnvironmentId')
     elastic_beanstalk_environment_name=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .EnvironmentName')
+    eb_hostname=$($AWS elasticbeanstalk describe-environments | $JQ '.Environments[] | select(.ApplicationName == "'"$elastic_beanstalk_application_name"'") | .CNAME')
     cluster="awseb-${elastic_beanstalk_environment_name}-${elastic_beanstalk_environment_id:2}"
 
     #estimate_test_time=($performance_test_scenario_rate*$performance_test_scenario_duration/50) + $performance_test_scenario_duration
     e_info "Running performance tests $performance_test_scenario_name rate:$performance_test_scenario_rate duration:$performance_test_scenario_duration"
     latest_revision=$($AWS ecs register-task-definition --cli-input-json "file://${RUN}/task-definition.json" | $JQ '.taskDefinition.revision') # side-effect causing
 
-
     sed \
         -e "s|<PERF_SCENARIO_NAME>|$performance_test_scenario_name|g" \
         -e "s|<PERF_SCENARIO_RATE>|$performance_test_scenario_rate|g" \
         -e "s|<PERF_SCENARIO_DURATION>|$performance_test_scenario_duration|g" \
+        -e "s|<PERF_SCENARIO_CHARGES>|$performance_test_scenario_withCharges|g" \
+        -e "s|<PERF_SCENARIO_LISTENERS>|$performance_test_scenario_withWebsocketListeners|g" \
+        -e "s|<PERF_SCENARIO_BASE_OUTPUT>|$ECS_CONTAINER_PATH|g" \
+        -e "s|<PERF_SCENARIO_HOSTNAMEURL>|http://$eb_hostname|g" \
         "${APPDIR}/stack/ecs-task-overrides-perf.template" > "${APPDIR}/stack/ecs-task-overrides-perf.json"
     run_task_overrides="--overrides file://${APPDIR}/stack/ecs-task-overrides-perf.json"
     run_task=$($AWS ecs run-task --task-definition "central-ledger-performance-tests-family:$latest_revision" $run_task_overrides --count 1 --cluster "$cluster" | $JQ '.tasks[0]') # side-effect causing
@@ -244,17 +251,18 @@ run_performance_tests(){
     ec2_instance=$($AWS ecs describe-container-instances --cluster="$cluster" --container-instances "$container_instance_id" | $JQ '.containerInstances[0].ec2InstanceId')
     ec2_ip=$($AWS ec2 describe-instances --instance-ids "$ec2_instance" | $JQ '.Reservations[0].Instances[0].PublicIpAddress')
 
+    local report_dir=$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/reports
+
     e_info "Waiting for performance tests to complete for task_id: $task_id cluster: $cluster"
     e_info "Use following command plus a destination to pull down the results if the wait times out."
-    e_info "scp -r -o StrictHostKeyChecking no -i $PERF_EC2_KEY_PAIR ec2-user@$ec2_ip:$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/results"
+    e_info "scp -r -o StrictHostKeyChecking no -i $PERF_EC2_KEY_PAIR ec2-user@$ec2_ip:$report_dir"
     task_output=$($AWS ecs describe-tasks --tasks "$task_id" --cluster "$cluster" | $JQ '.tasks[0].lastStatus')
     e_info $task_output
     $AWS ecs wait tasks-stopped --tasks "$task_id" --cluster "$cluster"
 
     e_info "About to copy some files from $ec2_ip to local"
     mkdir -p "${RUN}/$performance_test_scenario_name/$NOW"
-
-    scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$TESTS_DIR/perf-test-scripts/$performance_test_scenario_name/results" "${RUN}/$performance_test_scenario_name/$NOW"
+    scp -r -o "StrictHostKeyChecking no" -i "$PERF_EC2_KEY_PAIR" ec2-user@"$ec2_ip:$report_dir" "${RUN}/$performance_test_scenario_name/$NOW"
 }
 
 deploy_central_ledger_to_stack(){
@@ -323,6 +331,7 @@ wait_for_stack_deletion(){
 force_delete_stack(){
     e_info "Force deleting ECR repositories"
     $AWS ecr delete-repository --repository-name $PERF_STACK_NAME-central-ledger --force
+    $AWS ecr delete-repository --repository-name $PERF_STACK_NAME-central-ledger-admin --force
     $AWS ecr delete-repository --repository-name $PERF_STACK_NAME-performance-tests --force
 
     delete_stack
@@ -350,10 +359,24 @@ deploy_performance_testing_image(){
   create_task_definition_file
 }
 
+#First boolean is for charges(fees) which once created, do not go away.
+#Second boolean is for websocket account listeners that get closed at the end of each test.
 run_all_performance_tests(){
-  run_performance_tests "fulfill" 150 120
-  run_performance_tests "prepare" 150 120
-  run_performance_tests "fulfillWithFee" 150 120
+  run_performance_tests "prepare" 100 60 "false" "false"
+  sleep 10s
+  run_performance_tests "fulfill" 100 60 "false" "false"
+  sleep 10s
+  run_performance_tests "prepare" 100 60 "false" "true"
+  sleep 10s
+  run_performance_tests "fulfill" 100 60 "false" "true"
+  sleep 10s
+  run_performance_tests "prepare" 100 60 "true" "false"
+  sleep 10s
+  run_performance_tests "fulfill" 100 60 "true" "false"
+  sleep 10s
+  run_performance_tests "prepare" 100 60 "true" "true"
+  sleep 10s
+  run_performance_tests "fulfill" 100 60 "true" "true"
 }
 
 main(){
@@ -369,7 +392,7 @@ main(){
     deploy_performance_testing_image
     run_all_performance_tests
 
-    #force_delete_stack
+    force_delete_stack
     e_finish
 }
 

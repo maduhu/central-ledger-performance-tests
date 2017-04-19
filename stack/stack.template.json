@@ -536,6 +536,11 @@
                         "Value": "3001"
                     },
                     {
+                        "Namespace": "aws:elb:listener",
+                        "OptionName": "ListenerProtocol",
+                        "Value": "TCP"
+                    },
+                    {
                         "Namespace": "aws:elasticbeanstalk:application:environment",
                         "OptionName": "CLEDG_DATABASE_URI",
                         "Value": {

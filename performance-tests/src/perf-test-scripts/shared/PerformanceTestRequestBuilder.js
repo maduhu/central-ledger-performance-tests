@@ -1,6 +1,10 @@
-const PerformanceTestRequestBuilder = (shell, fs, uuidGen, requestTemplate) => {
+const shell = require('shelljs');
+const fs = require('fs');
+const uuidGen = require('uuid/v4');
+const PerformanceTestRequestBuilder = (requestTemplate) => {
 
   const build = (rate, duration, hostNameUrl, outputPath) => {
+    console.log(`Calling build with ${rate} ${duration} ${hostNameUrl} ${outputPath}`);
     let numberOfRequests = rate*duration;
     let targetsFile = `${outputPath}/targets.txt`;
     let bodiesPath = `${outputPath}/bodies`;
